@@ -45,7 +45,7 @@ modulate = Color(1, 0.92, 0.7, 1)
 outline_modulate = Color(0.08, 0.12, 0.1, 1)
 font_size = 28
 outline_size = 10
-text = "Morp"
+text = "Birdie"
 
 [node name="InteractArea" type="Area3D" parent="."]
 collision_layer = 0

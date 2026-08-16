@@ -31,7 +31,7 @@ func _build() -> void:
 	add_child(logo)
 
 	var title := Label.new()
-	title.text = "ROCK AND MORP\nSAVE POMPEII"
+	title.text = "BIRDIE AND BUTTER\nSAVE POMPEII"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	title.offset_top = 40

@@ -43,7 +43,7 @@ func local_display_name() -> String:
 		var persona: String = str(_steam.getPersonaName())
 		if not persona.is_empty():
 			return persona
-	return "Rock" if is_host() else "Morp"
+	return "Birdie" if is_host() else "Butter"
 
 
 func host_lan() -> Error:
@@ -193,7 +193,7 @@ func _on_lobby_created(result: int, this_lobby: int) -> void:
 	lobby_id = this_lobby
 	if _steam.has_method("setLobbyData"):
 		_steam.setLobbyData(lobby_id, "name", "%s's Pompeii Rescue" % local_display_name())
-		_steam.setLobbyData(lobby_id, "game", "rock_and_morp")
+		_steam.setLobbyData(lobby_id, "game", "birdie_and_butter")
 	_setup_steam_host_peer()
 	GameState.go_to_lobby()
 

@@ -22,9 +22,9 @@ func _make_lobby_hud() -> void:
 	label.add_theme_font_size_override("font_size", 22)
 	label.add_theme_color_override("font_color", Color("bfe9ff"))
 	if NetworkManager.is_host():
-		label.text = "You are ROCK. Walk into the portal and hold E when everyone is aboard."
+		label.text = "You are BIRDIE. Walk into the portal and hold E when everyone is aboard."
 	else:
-		label.text = "You are MORP. Wait for Rock to fire up the time portal."
+		label.text = "You are BUTTER. Wait for Birdie to fire up the time portal."
 	if NetworkManager.transport == NetworkManager.Transport.STEAM:
 		label.text += "   Lobby %s" % NetworkManager.lobby_id
 	hud.add_child(label)

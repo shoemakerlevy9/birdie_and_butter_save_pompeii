@@ -10,8 +10,8 @@ config_version=5
 
 [application]
 
-config/name="Rock and Morp Save Pompeii"
-config/description="A silly co-op adventure: travel back in time and save the people of Pompeii."
+config/name="Birdie and Butter Save Pompeii"
+config/description="A silly co-op adventure: two cats travel back in time and drag the people of Pompeii to safety."
 config/version="0.1.0"
 run/main_scene="res://scenes/boot/splash.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")

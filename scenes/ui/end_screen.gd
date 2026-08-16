@@ -63,7 +63,7 @@ func _scores_tab() -> Control:
 		rank += 1
 	if GameState.final_scores.is_empty():
 		var empty := Label.new()
-		empty.text = "No scores recorded. Next time, grab a townsfolk!"
+		empty.text = "No scores recorded. Next time, drag a townsfolk!"
 		root.add_child(empty)
 	return root
 

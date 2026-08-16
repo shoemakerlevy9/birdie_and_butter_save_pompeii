@@ -7,11 +7,11 @@ const TURN_SPEED := 2.6
 const CAMERA_PITCH := -0.38
 const ARREST_RESET_RATE := 0.6
 
-@export var is_rock := false
+@export var is_birdie := false
 
 var display_name := ""
 var aim_point := Vector3.ZERO
-var grabbed_civilian: Civilian
+var dragged_civilian: Civilian
 var pushing_barrow: Wheelbarrow
 var arrest_progress := 0.0
 var prison_grace := 0.0
@@ -38,9 +38,9 @@ func _ready() -> void:
 	var named_id := str(name).to_int()
 	if named_id > 0:
 		set_multiplayer_authority(named_id)
-	is_rock = get_multiplayer_authority() == NetworkManager.host_peer_id
+	is_birdie = get_multiplayer_authority() == NetworkManager.host_peer_id
 	_build_body()
-	nameplate.text = "Rock" if is_rock else "Morp"
+	nameplate.text = "Birdie" if is_birdie else "Butter"
 	spring_arm.rotation.x = CAMERA_PITCH
 	_take_local_control()
 
@@ -164,7 +164,7 @@ func _teleport_to(where: Vector3, jailed: bool) -> void:
 @rpc("any_peer", "call_local", "reliable")
 func _set_display_name(value: String) -> void:
 	display_name = value
-	nameplate.text = "%s\n%s" % [value, "Rock" if is_rock else "Morp"]
+	nameplate.text = "%s\n%s" % [value, "Birdie" if is_birdie else "Butter"]
 	if multiplayer.is_server():
 		GameState.ensure_player(get_multiplayer_authority(), value)
 
@@ -179,11 +179,11 @@ func _move(delta: float) -> void:
 	direction.y = 0.0
 	if direction.length() > 1.0:
 		direction = direction.normalized()
-	var speed := 6.0 if is_rock else 7.1
+	var speed := 6.0 if is_birdie else 7.1
 	if pushing_barrow:
 		speed *= 0.72
-	if grabbed_civilian:
-		speed *= 0.82
+	if dragged_civilian:
+		speed *= 0.7
 	if direction.length() > 0.05:
 		velocity.x = direction.x * speed
 		velocity.z = direction.z * speed
@@ -223,20 +223,20 @@ func _interact_pressed() -> void:
 		_host_call("host_detach_barrow", [])
 		pushing_barrow = null
 		return
-	if grabbed_civilian and is_instance_valid(grabbed_civilian):
+	if dragged_civilian and is_instance_valid(dragged_civilian):
 		var nearby_barrow := _closest_barrow()
 		if nearby_barrow:
-			_host_call("host_chuck_civilian", [grabbed_civilian.get_path()])
-			grabbed_civilian = null
+			_host_call("host_chuck_civilian", [dragged_civilian.get_path()])
+			dragged_civilian = null
 			return
 		_host_call("host_release_civilian", [])
-		grabbed_civilian = null
+		dragged_civilian = null
 		return
 	var civilian := _closest_civilian()
 	var barrow := _closest_barrow()
 	if civilian and (barrow == null or global_position.distance_to(civilian.global_position) <= global_position.distance_to(barrow.global_position)):
-		grabbed_civilian = civilian
-		_host_call("host_grab_civilian", [civilian.get_path()])
+		dragged_civilian = civilian
+		_host_call("host_drag_civilian", [civilian.get_path()])
 		return
 	if barrow:
 		pushing_barrow = barrow
@@ -291,15 +291,15 @@ func host_detach_barrow() -> void:
 
 
 @rpc("any_peer", "call_local", "reliable")
-func host_grab_civilian(civilian_path: NodePath) -> void:
+func host_drag_civilian(civilian_path: NodePath) -> void:
 	if not multiplayer.is_server() or not _sender_is_self():
 		return
 	var civilian := _resolve(civilian_path) as Civilian
 	if civilian == null or civilian.saved:
 		return
-	grabbed_civilian = civilian
-	civilian.grab(self)
-	GameState.show_banner("Grabbed a townsfolk! Take them to a green pad or a wheelbarrow.")
+	dragged_civilian = civilian
+	civilian.drag(self)
+	GameState.show_banner("Dragging a townsfolk! Haul them to a green pad or a wheelbarrow.")
 
 
 @rpc("any_peer", "call_local", "reliable")
@@ -321,8 +321,8 @@ func host_chuck_civilian(civilian_path: NodePath) -> void:
 		barrow = _closest_barrow()
 	if barrow == null:
 		return
-	if grabbed_civilian == civilian:
-		grabbed_civilian = null
+	if dragged_civilian == civilian:
+		dragged_civilian = null
 	barrow.load_civilian(civilian)
 	GameState.show_banner("Chucked them in the wheelbarrow!")
 
@@ -341,9 +341,9 @@ func host_dump_barrow() -> void:
 
 
 func _release_civilian() -> void:
-	if grabbed_civilian and is_instance_valid(grabbed_civilian):
-		grabbed_civilian.release()
-	grabbed_civilian = null
+	if dragged_civilian and is_instance_valid(dragged_civilian):
+		dragged_civilian.release()
+	dragged_civilian = null
 
 
 func _sender_is_self() -> bool:
@@ -532,17 +532,17 @@ func _refresh_prompt() -> void:
 		else:
 			interact_prompt = "E  Let go of the wheelbarrow"
 		return
-	if grabbed_civilian:
+	if dragged_civilian:
 		if _closest_barrow():
 			interact_prompt = "E  Chuck them in the wheelbarrow"
 		else:
-			interact_prompt = "E  Drop  •  Get them to a green pad"
+			interact_prompt = "E  Let go  •  Drag them to a green pad"
 		return
 	if _closest_barrow():
 		interact_prompt = "E  Push wheelbarrow"
 		return
 	if _closest_civilian():
-		interact_prompt = "E  Grab townsfolk"
+		interact_prompt = "E  Drag townsfolk"
 		return
 	if _closest_in_group("trap_door"):
 		interact_prompt = "E  Trap door escape"
@@ -568,7 +568,7 @@ func _try_enter_portal(delta: float) -> void:
 
 
 func _can_use_portal() -> bool:
-	return is_rock or NetworkManager.is_host()
+	return is_birdie or NetworkManager.is_host()
 
 
 func _near_portal() -> bool:
@@ -609,36 +609,67 @@ func _near_safe_zone() -> bool:
 
 
 func _head_height() -> float:
-	return 1.72 if is_rock else 1.28
+	return 1.22 if is_birdie else 1.06
 
 
 func _build_body() -> void:
 	for child in body_root.get_children():
 		child.queue_free()
 	var shape := CapsuleShape3D.new()
-	if is_rock:
-		shape.radius = 0.28
-		shape.height = 1.95
-		collision_shape.position.y = 0.975
-		spring_arm.position.y = 1.72
-		nameplate.position.y = 2.25
-		MeshUtil.add_capsule(body_root, 0.26, 1.55, Color("d8d3c4"), Vector3(0.0, 0.95, 0.0))
-		MeshUtil.add_box(body_root, Vector3(0.62, 0.72, 0.38), Color("f4f0e4"), Vector3(0.0, 1.18, 0.04))
-		MeshUtil.add_box(body_root, Vector3(0.5, 0.55, 0.34), Color("2c3a4a"), Vector3(0.0, 0.48, 0.0))
-		MeshUtil.add_sphere(body_root, 0.22, Color("f0d2b4"), Vector3(0.0, 1.78, 0.04))
-		MeshUtil.add_box(body_root, Vector3(0.34, 0.28, 0.28), Color("f7f7f2"), Vector3(0.0, 2.02, 0.0))
-		MeshUtil.add_box(body_root, Vector3(0.12, 0.34, 0.12), Color("ffffff"), Vector3(-0.16, 2.14, 0.04))
-		MeshUtil.add_box(body_root, Vector3(0.1, 0.4, 0.1), Color("f5f5f0"), Vector3(0.14, 2.18, -0.02))
-		MeshUtil.add_box(body_root, Vector3(0.08, 0.22, 0.18), Color("ffffff"), Vector3(0.02, 2.22, 0.12))
+	var s := 1.08 if is_birdie else 0.94
+	if is_birdie:
+		shape.radius = 0.34
+		shape.height = 0.9
+		collision_shape.position.y = 0.45
+		spring_arm.position.y = 1.22
+		nameplate.position.y = 1.58
 	else:
-		shape.radius = 0.4
-		shape.height = 1.42
-		collision_shape.position.y = 0.71
-		spring_arm.position.y = 1.28
-		nameplate.position.y = 1.72
-		MeshUtil.add_capsule(body_root, 0.4, 1.15, Color("3aa6a0"), Vector3(0.0, 0.7, 0.0))
-		MeshUtil.add_box(body_root, Vector3(0.86, 0.55, 0.58), Color("e67a21"), Vector3(0.0, 0.92, 0.04))
-		MeshUtil.add_sphere(body_root, 0.28, Color("f0c29a"), Vector3(0.0, 1.32, 0.06))
-		MeshUtil.add_box(body_root, Vector3(0.42, 0.16, 0.38), Color("5a3a1c"), Vector3(0.0, 1.52, 0.0))
+		shape.radius = 0.3
+		shape.height = 0.8
+		collision_shape.position.y = 0.4
+		spring_arm.position.y = 1.06
+		nameplate.position.y = 1.4
 	collision_shape.shape = shape
-	MeshUtil.add_box(body_root, Vector3(0.12, 0.1, 0.42), Color("7ee0ff"), Vector3(0.28, _head_height() - 0.35, -0.28), 2.4)
+	_build_cat(s)
+
+
+func _build_cat(s: float) -> void:
+	var fur := Color("d96a1c") if is_birdie else Color("f3d56a")
+	var fur_dark := Color("a34a12") if is_birdie else Color("c9a43c")
+	var belly := Color("f6e2c4") if is_birdie else Color("fff6d2")
+	var eye := Color("8fce3a") if is_birdie else Color("e8b84a")
+	MeshUtil.add_box(body_root, Vector3(0.46, 0.38, 0.72) * s, fur, Vector3(0.0, 0.42 * s, 0.04))
+	MeshUtil.add_box(body_root, Vector3(0.34, 0.2, 0.5) * s, belly, Vector3(0.0, 0.28 * s, 0.02))
+	MeshUtil.add_sphere(body_root, 0.2 * s, fur, Vector3(0.0, 0.44 * s, 0.28 * s))
+	MeshUtil.add_sphere(body_root, 0.2 * s, fur, Vector3(0.0, 0.44 * s, -0.24 * s))
+	MeshUtil.add_sphere(body_root, 0.26 * s, fur, Vector3(0.0, 0.64 * s, -0.42 * s))
+	MeshUtil.add_sphere(body_root, 0.12 * s, belly, Vector3(0.0, 0.56 * s, -0.6 * s))
+	MeshUtil.add_sphere(body_root, 0.035 * s, Color("e07a8a"), Vector3(0.0, 0.58 * s, -0.7 * s))
+	var left_ear := MeshUtil.add_box(body_root, Vector3(0.12, 0.18, 0.08) * s, fur, Vector3(-0.14 * s, 0.84 * s, -0.38 * s))
+	left_ear.rotation.z = 0.28
+	var right_ear := MeshUtil.add_box(body_root, Vector3(0.12, 0.18, 0.08) * s, fur, Vector3(0.14 * s, 0.84 * s, -0.38 * s))
+	right_ear.rotation.z = -0.28
+	MeshUtil.add_box(body_root, Vector3(0.06, 0.1, 0.04) * s, Color("f0a090"), Vector3(-0.14 * s, 0.82 * s, -0.42 * s))
+	MeshUtil.add_box(body_root, Vector3(0.06, 0.1, 0.04) * s, Color("f0a090"), Vector3(0.14 * s, 0.82 * s, -0.42 * s))
+	MeshUtil.add_sphere(body_root, 0.045 * s, Color.WHITE, Vector3(-0.09 * s, 0.68 * s, -0.62 * s))
+	MeshUtil.add_sphere(body_root, 0.045 * s, Color.WHITE, Vector3(0.09 * s, 0.68 * s, -0.62 * s))
+	MeshUtil.add_sphere(body_root, 0.028 * s, eye, Vector3(-0.09 * s, 0.68 * s, -0.64 * s))
+	MeshUtil.add_sphere(body_root, 0.028 * s, eye, Vector3(0.09 * s, 0.68 * s, -0.64 * s))
+	MeshUtil.add_sphere(body_root, 0.016 * s, Color.BLACK, Vector3(-0.09 * s, 0.68 * s, -0.66 * s))
+	MeshUtil.add_sphere(body_root, 0.016 * s, Color.BLACK, Vector3(0.09 * s, 0.68 * s, -0.66 * s))
+	if is_birdie:
+		MeshUtil.add_box(body_root, Vector3(0.48, 0.06, 0.08) * s, fur_dark, Vector3(0.0, 0.52 * s, -0.08))
+		MeshUtil.add_box(body_root, Vector3(0.48, 0.06, 0.08) * s, fur_dark, Vector3(0.0, 0.52 * s, 0.12))
+		MeshUtil.add_box(body_root, Vector3(0.1, 0.08, 0.2) * s, fur_dark, Vector3(0.0, 0.74 * s, -0.4 * s))
+	var paw := Color("2a2420") if is_birdie else Color("5a4630")
+	for pos in [Vector3(-0.16, 0.18, -0.22), Vector3(0.16, 0.18, -0.22), Vector3(-0.16, 0.18, 0.26), Vector3(0.16, 0.18, 0.26)]:
+		MeshUtil.add_capsule(body_root, 0.055 * s, 0.32 * s, fur, pos * s)
+		MeshUtil.add_sphere(body_root, 0.06 * s, paw, Vector3(pos.x * s, 0.05 * s, pos.z * s))
+	var tail_base := MeshUtil.add_capsule(body_root, 0.05 * s, 0.36 * s, fur, Vector3(0.0, 0.58 * s, 0.46 * s))
+	tail_base.rotation.x = 0.9
+	var tail_tip := MeshUtil.add_capsule(body_root, 0.04 * s, 0.3 * s, fur_dark, Vector3(0.1 * s, 0.8 * s, 0.62 * s))
+	tail_tip.rotation.x = 0.35
+	tail_tip.rotation.y = 0.45
+	MeshUtil.add_box(body_root, Vector3(0.3, 0.08, 0.06) * s, Color("7ee0ff"), Vector3(0.0, 0.68 * s, -0.64 * s), 2.2)
+	MeshUtil.add_box(body_root, Vector3(0.22, 0.018, 0.018) * s, Color("3a2a1a"), Vector3(-0.2 * s, 0.54 * s, -0.64 * s))
+	MeshUtil.add_box(body_root, Vector3(0.22, 0.018, 0.018) * s, Color("3a2a1a"), Vector3(0.2 * s, 0.54 * s, -0.64 * s))
