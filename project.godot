@@ -12,7 +12,7 @@ config_version=5
 
 config/name="Birdie and Butter Save Pompeii"
 config/description="A silly co-op adventure: two cats travel back in time and drag the people of Pompeii to safety."
-config/version="0.1.0"
+config/version="0.2.0"
 run/main_scene="res://scenes/boot/splash.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://assets/branding/ppls_studios_logo.jpg"

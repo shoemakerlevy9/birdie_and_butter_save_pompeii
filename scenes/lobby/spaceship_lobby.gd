@@ -23,6 +23,8 @@ func _make_lobby_hud() -> void:
 	label.add_theme_color_override("font_color", Color("bfe9ff"))
 	if NetworkManager.is_host():
 		label.text = "You are BIRDIE. Walk into the portal and hold E when everyone is aboard."
+		if NetworkManager.transport == NetworkManager.Transport.LAN:
+			label.text += "   Friends join LAN at %s" % NetworkManager.lan_join_hint()
 	else:
 		label.text = "You are BUTTER. Wait for Birdie to fire up the time portal."
 	if NetworkManager.transport == NetworkManager.Transport.STEAM:

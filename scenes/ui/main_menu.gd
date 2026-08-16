@@ -170,7 +170,7 @@ func _on_host_lan() -> void:
 
 
 func _on_join_lan() -> void:
-	_status.text = "Joining %s..." % _ip.text
+	_status.text = "Joining %s:%s..." % [_ip.text, NetworkManager.LAN_PORT]
 	NetworkManager.join_lan(_ip.text)
 
 

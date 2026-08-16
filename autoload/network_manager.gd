@@ -16,6 +16,7 @@ var host_peer_id := 1
 var last_error := ""
 var _steam: Object = null
 var _hosting_steam := false
+var _ignore_peer_signals := false
 
 
 func _ready() -> void:
@@ -47,14 +48,14 @@ func local_display_name() -> String:
 
 
 func host_lan() -> Error:
-	_reset_peer()
 	var peer := ENetMultiplayerPeer.new()
+	peer.set_bind_ip("0.0.0.0")
 	var err := peer.create_server(LAN_PORT, MAX_PLAYERS)
 	if err != OK:
 		last_error = "Could not host LAN on port %s" % LAN_PORT
 		connection_failed.emit(last_error)
 		return err
-	multiplayer.multiplayer_peer = peer
+	_set_peer(peer)
 	transport = Transport.LAN
 	host_peer_id = multiplayer.get_unique_id()
 	GameState.go_to_lobby()
@@ -62,16 +63,32 @@ func host_lan() -> Error:
 
 
 func join_lan(address: String) -> Error:
-	_reset_peer()
+	var host := address.strip_edges()
+	if host.is_empty():
+		host = "127.0.0.1"
 	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_client(address.strip_edges(), LAN_PORT)
+	peer.set_bind_ip("0.0.0.0")
+	var err := peer.create_client(host, LAN_PORT)
 	if err != OK:
-		last_error = "Could not join %s" % address
+		last_error = "Could not join %s:%s" % [host, LAN_PORT]
 		connection_failed.emit(last_error)
 		return err
-	multiplayer.multiplayer_peer = peer
+	_set_peer(peer)
 	transport = Transport.LAN
 	return OK
+
+
+func lan_join_hint() -> String:
+	var extras: PackedStringArray = PackedStringArray()
+	for ip in IP.get_local_addresses():
+		if not ip.is_valid_ip_address() or ":" in ip:
+			continue
+		if ip.begins_with("127.") or ip.begins_with("169.254."):
+			continue
+		extras.append(ip)
+	if extras.is_empty():
+		return "127.0.0.1"
+	return "127.0.0.1 or %s" % extras[0]
 
 
 func host_steam() -> void:
@@ -139,10 +156,16 @@ func shutdown() -> void:
 	transport = Transport.NONE
 
 
-func _reset_peer() -> void:
+func _set_peer(peer: MultiplayerPeer) -> void:
+	_ignore_peer_signals = true
 	if multiplayer.multiplayer_peer != null:
 		multiplayer.multiplayer_peer.close()
-	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
+	multiplayer.multiplayer_peer = peer
+	_ignore_peer_signals = false
+
+
+func _reset_peer() -> void:
+	_set_peer(OfflineMultiplayerPeer.new())
 
 
 func _init_steam() -> void:
@@ -236,7 +259,7 @@ func _setup_steam_host_peer() -> bool:
 		return false
 	if "server_relay" in peer:
 		peer.server_relay = true
-	multiplayer.multiplayer_peer = peer
+	_set_peer(peer)
 	transport = Transport.STEAM
 	host_peer_id = multiplayer.get_unique_id()
 	return true
@@ -259,7 +282,7 @@ func _setup_steam_client_peer(this_lobby: int, owner_id: int) -> bool:
 		return false
 	if "server_relay" in peer:
 		peer.server_relay = true
-	multiplayer.multiplayer_peer = peer
+	_set_peer(peer)
 	transport = Transport.STEAM
 	return true
 
@@ -270,11 +293,15 @@ func _on_connected_to_server() -> void:
 
 
 func _on_server_disconnected() -> void:
+	if _ignore_peer_signals:
+		return
 	shutdown()
 	GameState.go_to_menu()
 
 
 func _on_connection_failed() -> void:
-	last_error = "Connection failed"
+	if _ignore_peer_signals:
+		return
+	last_error = "Connection failed. Host LAN in another window first, then join 127.0.0.1."
 	connection_failed.emit(last_error)
 	shutdown()
