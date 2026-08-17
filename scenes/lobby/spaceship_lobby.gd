@@ -21,15 +21,9 @@ func _make_lobby_hud() -> void:
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.add_theme_font_size_override("font_size", 22)
 	label.add_theme_color_override("font_color", Color("bfe9ff"))
-	if NetworkManager.is_host():
-		label.text = "You are BIRDIE. Walk into the portal and hold E when everyone is aboard."
-		if NetworkManager.transport == NetworkManager.Transport.LAN:
-			label.text += "   Friends join LAN at %s" % NetworkManager.lan_join_hint()
-	else:
-		label.text = "You are BUTTER. Wait for Birdie to fire up the time portal."
-	if NetworkManager.transport == NetworkManager.Transport.STEAM:
-		label.text += "   Lobby %s" % NetworkManager.lobby_id
 	hud.add_child(label)
+	NetworkManager.roster_changed.connect(_refresh_role)
+	_refresh_role()
 	var prompt := Label.new()
 	prompt.name = "Prompt"
 	prompt.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
@@ -47,6 +41,27 @@ func _make_lobby_hud() -> void:
 		invite.position = Vector2(24, 24)
 		invite.pressed.connect(NetworkManager.invite_friends)
 		hud.add_child(invite)
+
+
+func _refresh_role() -> void:
+	var label := get_node_or_null("LobbyHUD/RoleLabel") as Label
+	if label == null:
+		return
+	var cat := NetworkManager.cat_name_for_peer(multiplayer.get_unique_id()).to_upper()
+	var key := InputBinder.interact_label()
+	if NetworkManager.is_host():
+		label.text = "You are %s. Walk into the portal and hold %s when everyone is aboard." % [cat, key]
+		if NetworkManager.transport == NetworkManager.Transport.LAN:
+			label.text += "   Friends join LAN at %s" % NetworkManager.lan_join_hint()
+	else:
+		label.text = "You are %s. Wait for Birdie to fire up the time portal." % cat
+	if NetworkManager.transport == NetworkManager.Transport.STEAM:
+		label.text += "   Lobby %s" % NetworkManager.lobby_id
+
+
+func _exit_tree() -> void:
+	if NetworkManager.roster_changed.is_connected(_refresh_role):
+		NetworkManager.roster_changed.disconnect(_refresh_role)
 
 
 func _process(_delta: float) -> void:

@@ -1,7 +1,7 @@
 [gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scenes/boot/splash.gd" id="1"]
-[ext_resource type="Texture2D" path="res://assets/branding/ppls_studios_logo.jpg" id="2"]
+[ext_resource type="Texture2D" path="res://assets/branding/ppls_studios_logo.png" id="2"]
 
 [node name="Splash" type="Control"]
 layout_mode = 3

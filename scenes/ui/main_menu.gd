@@ -23,10 +23,10 @@ func _build() -> void:
 	add_child(bg)
 
 	var logo := TextureRect.new()
-	logo.texture = load("res://assets/branding/ppls_studios_logo.jpg")
+	logo.texture = load("res://assets/branding/ppls_studios_logo.png")
 	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	logo.custom_minimum_size = Vector2(180, 180)
+	logo.custom_minimum_size = Vector2(220, 120)
 	logo.position = Vector2(36, 28)
 	add_child(logo)
 
@@ -41,7 +41,7 @@ func _build() -> void:
 	add_child(title)
 
 	var subtitle := Label.new()
-	subtitle.text = "A silly time-travel rescue • up to 8 friends"
+	subtitle.text = "A silly time-travel rescue • Birdie, Squeet, Mimi, Talle, Tire, Horn, Mable"
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	subtitle.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	subtitle.offset_top = 190
@@ -75,7 +75,8 @@ func _build() -> void:
 	col.add_child(_friends)
 
 	col.add_child(HSeparator.new())
-	_button(col, "Host LAN (play solo or local)", _on_host_lan)
+	var host_lan := _button(col, "Host LAN (play solo or local)", _on_host_lan)
+	host_lan.grab_focus()
 
 	var lan_row := HBoxContainer.new()
 	col.add_child(lan_row)
@@ -95,6 +96,12 @@ func _build() -> void:
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_status.add_theme_color_override("font_color", Color("f0d48a"))
 	col.add_child(_status)
+
+	var pads := Label.new()
+	pads.text = "Xbox / gamepad: D-pad or left stick to move the menu  •  A confirm  •  B back\nIn-game: left stick move  •  right stick turn  •  A grab  •  RT / X shoot"
+	pads.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	pads.add_theme_color_override("font_color", Color("9ec9a4"))
+	col.add_child(pads)
 
 	var studio := Label.new()
 	studio.text = "PPLS STUDIOS"

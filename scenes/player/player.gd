@@ -8,6 +8,7 @@ const CAMERA_PITCH := -0.38
 const ARREST_RESET_RATE := 0.6
 
 @export var is_birdie := false
+@export var cat_name := "Birdie"
 
 var display_name := ""
 var aim_point := Vector3.ZERO
@@ -38,9 +39,8 @@ func _ready() -> void:
 	var named_id := str(name).to_int()
 	if named_id > 0:
 		set_multiplayer_authority(named_id)
-	is_birdie = get_multiplayer_authority() == NetworkManager.host_peer_id
-	_build_body()
-	nameplate.text = "Birdie" if is_birdie else "Butter"
+	NetworkManager.roster_changed.connect(_apply_cat_identity)
+	_apply_cat_identity()
 	spring_arm.rotation.x = CAMERA_PITCH
 	_take_local_control()
 
@@ -57,7 +57,7 @@ func _take_local_control() -> void:
 	if camera:
 		camera.current = true
 	if _cursor == null:
-		Input.mouse_mode = Input.MOUSE_MODE_CONFINED_HIDDEN
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		_make_aim_cursor()
 		display_name = NetworkManager.local_display_name()
 		if multiplayer.has_multiplayer_peer():
@@ -68,6 +68,8 @@ func _take_local_control() -> void:
 
 
 func _exit_tree() -> void:
+	if NetworkManager.roster_changed.is_connected(_apply_cat_identity):
+		NetworkManager.roster_changed.disconnect(_apply_cat_identity)
 	if is_multiplayer_authority():
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
@@ -77,6 +79,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event.is_action_pressed("cancel"):
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	elif event is InputEventMouseButton and event.pressed:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	elif event is InputEventJoypadButton and event.pressed and event.button_index != JOY_BUTTON_START:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func _physics_process(delta: float) -> void:
@@ -94,6 +100,8 @@ func _physics_process(delta: float) -> void:
 	else:
 		spring_arm.position = Vector3(0.0, _head_height(), 0.0)
 	if not _is_local_controller():
+		return
+	if GameState.cinematic:
 		return
 	_take_local_control()
 	_move(delta)
@@ -164,7 +172,7 @@ func _teleport_to(where: Vector3, jailed: bool) -> void:
 @rpc("any_peer", "call_local", "reliable")
 func _set_display_name(value: String) -> void:
 	display_name = value
-	nameplate.text = "%s\n%s" % [value, "Birdie" if is_birdie else "Butter"]
+	nameplate.text = "%s\n%s" % [value, cat_name]
 	if multiplayer.is_server():
 		GameState.ensure_player(get_multiplayer_authority(), value)
 
@@ -172,9 +180,9 @@ func _set_display_name(value: String) -> void:
 func _move(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y -= ProjectSettings.get_setting("physics/3d/default_gravity") * delta
-	rotate_y(-_axis("turn_left", "turn_right", KEY_A, KEY_D) * TURN_SPEED * delta)
+	rotate_y(-_axis("turn_left", "turn_right", KEY_LEFT, KEY_RIGHT) * TURN_SPEED * delta)
 	var throttle := _axis("move_back", "move_forward", KEY_S, KEY_W)
-	var strafe := _axis("move_left", "move_right", KEY_LEFT, KEY_RIGHT)
+	var strafe := _axis("move_left", "move_right", KEY_A, KEY_D)
 	var direction := -global_transform.basis.z * throttle + global_transform.basis.x * strafe
 	direction.y = 0.0
 	if direction.length() > 1.0:
@@ -212,39 +220,7 @@ func _follow_attachments() -> void:
 
 
 func _interact_pressed() -> void:
-	if pushing_barrow and is_instance_valid(pushing_barrow):
-		if pushing_barrow.has_cargo() and (pushing_barrow.is_in_safe_zone() or _near_safe_zone()):
-			_host_call("host_dump_barrow", [])
-			return
-		var cargo_friend := _closest_civilian()
-		if cargo_friend:
-			_host_call("host_chuck_civilian", [cargo_friend.get_path()])
-			return
-		_host_call("host_detach_barrow", [])
-		pushing_barrow = null
-		return
-	if dragged_civilian and is_instance_valid(dragged_civilian):
-		var nearby_barrow := _closest_barrow()
-		if nearby_barrow:
-			_host_call("host_chuck_civilian", [dragged_civilian.get_path()])
-			dragged_civilian = null
-			return
-		_host_call("host_release_civilian", [])
-		dragged_civilian = null
-		return
-	var civilian := _closest_civilian()
-	var barrow := _closest_barrow()
-	if civilian and (barrow == null or global_position.distance_to(civilian.global_position) <= global_position.distance_to(barrow.global_position)):
-		dragged_civilian = civilian
-		_host_call("host_drag_civilian", [civilian.get_path()])
-		return
-	if barrow:
-		pushing_barrow = barrow
-		_host_call("host_attach_barrow", [barrow.get_path()])
-		return
-	var hatch := _closest_in_group("trap_door")
-	if hatch and hatch.has_method("use"):
-		hatch.use(self)
+	_host_call("host_interact", [])
 
 
 func _host_call(method: StringName, args: Array) -> void:
@@ -267,6 +243,67 @@ func _resolve(path: NodePath) -> Node:
 	if node:
 		return node
 	return get_node_or_null(path)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func host_interact() -> void:
+	if not multiplayer.is_server() or not _sender_is_self():
+		return
+	if pushing_barrow and is_instance_valid(pushing_barrow):
+		if pushing_barrow.has_cargo() and (pushing_barrow.is_in_safe_zone() or _near_safe_zone()):
+			host_dump_barrow()
+			_sync_hands()
+			return
+		var cargo_friend := _closest_civilian()
+		if cargo_friend:
+			host_chuck_civilian(cargo_friend.get_path())
+			_sync_hands()
+			return
+		host_detach_barrow()
+		_sync_hands()
+		return
+	if dragged_civilian and is_instance_valid(dragged_civilian):
+		var nearby_barrow := _closest_barrow()
+		if nearby_barrow:
+			host_chuck_civilian(dragged_civilian.get_path())
+			_sync_hands()
+			return
+		host_release_civilian()
+		_sync_hands()
+		return
+	var civilian := _closest_civilian()
+	var barrow := _closest_barrow()
+	if civilian and (barrow == null or global_position.distance_to(civilian.global_position) <= global_position.distance_to(barrow.global_position)):
+		host_drag_civilian(civilian.get_path())
+		_sync_hands()
+		return
+	if barrow:
+		host_attach_barrow(barrow.get_path())
+		_sync_hands()
+		return
+	var hatch := _closest_in_group("trap_door")
+	if hatch and hatch.has_method("use"):
+		hatch.use(self)
+	_sync_hands()
+
+
+func _sync_hands() -> void:
+	var drag_path := NodePath()
+	var barrow_path := NodePath()
+	if dragged_civilian and is_instance_valid(dragged_civilian):
+		drag_path = dragged_civilian.get_path()
+	if pushing_barrow and is_instance_valid(pushing_barrow):
+		barrow_path = pushing_barrow.get_path()
+	rpc("_apply_hands", drag_path, barrow_path)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _apply_hands(drag_path: NodePath, barrow_path: NodePath) -> void:
+	var sender := multiplayer.get_remote_sender_id()
+	if sender != 0 and sender != 1:
+		return
+	dragged_civilian = _resolve(drag_path) as Civilian
+	pushing_barrow = _resolve(barrow_path) as Wheelbarrow
 
 
 @rpc("any_peer", "call_local", "reliable")
@@ -357,13 +394,15 @@ func _update_aim() -> void:
 		_aim_marker.global_position = aim_point + Vector3.UP * 0.08
 		_aim_marker.visible = true
 	if _cursor:
-		_cursor.position = get_viewport().get_mouse_position() - _cursor.size * 0.5
+		var view := get_viewport().get_visible_rect().size
+		_cursor.position = view * 0.5 - _cursor.size * 0.5
 
 
 func _cursor_world_point() -> Vector3:
-	var mouse := get_viewport().get_mouse_position()
-	var origin := camera.project_ray_origin(mouse)
-	var toward := camera.project_ray_normal(mouse)
+	var view := get_viewport().get_visible_rect().size
+	var center := view * 0.5
+	var origin := camera.project_ray_origin(center)
+	var toward := camera.project_ray_normal(center)
 	var space := get_world_3d().direct_space_state
 	var query := PhysicsRayQueryParameters3D.create(origin, origin + toward * 180.0)
 	query.collision_mask = 9
@@ -524,31 +563,32 @@ func _spawn_tracer(origin: Vector3, destination: Vector3) -> void:
 
 
 func _refresh_prompt() -> void:
+	var key := InputBinder.interact_label()
 	if pushing_barrow:
 		if pushing_barrow.has_cargo() and (pushing_barrow.is_in_safe_zone() or _near_safe_zone()):
-			interact_prompt = "E  Dump townsfolk in the safe zone"
+			interact_prompt = "%s  Dump townsfolk in the safe zone" % key
 		elif _closest_civilian():
-			interact_prompt = "E  Chuck them in the wheelbarrow"
+			interact_prompt = "%s  Chuck them in the wheelbarrow" % key
 		else:
-			interact_prompt = "E  Let go of the wheelbarrow"
+			interact_prompt = "%s  Let go of the wheelbarrow" % key
 		return
 	if dragged_civilian:
 		if _closest_barrow():
-			interact_prompt = "E  Chuck them in the wheelbarrow"
+			interact_prompt = "%s  Chuck them in the wheelbarrow" % key
 		else:
-			interact_prompt = "E  Let go  •  Drag them to a green pad"
+			interact_prompt = "%s  Let go  •  Drag them to a green pad" % key
 		return
 	if _closest_barrow():
-		interact_prompt = "E  Push wheelbarrow"
+		interact_prompt = "%s  Push wheelbarrow" % key
 		return
 	if _closest_civilian():
-		interact_prompt = "E  Drag townsfolk"
+		interact_prompt = "%s  Drag townsfolk" % key
 		return
 	if _closest_in_group("trap_door"):
-		interact_prompt = "E  Trap door escape"
+		interact_prompt = "%s  Trap door escape" % key
 		return
 	if _can_use_portal() and _near_portal():
-		interact_prompt = "Hold E  Enter the portal"
+		interact_prompt = "Hold %s  Enter the portal" % key
 		return
 	interact_prompt = ""
 
@@ -608,8 +648,40 @@ func _near_safe_zone() -> bool:
 	return false
 
 
+func _apply_cat_identity() -> void:
+	cat_name = NetworkManager.cat_name_for_peer(get_multiplayer_authority())
+	is_birdie = cat_name == "Birdie"
+	if body_root:
+		_build_body()
+	if nameplate:
+		if display_name.is_empty():
+			nameplate.text = cat_name
+		else:
+			nameplate.text = "%s\n%s" % [display_name, cat_name]
+
+
 func _head_height() -> float:
 	return 1.22 if is_birdie else 1.06
+
+
+func _cat_palette() -> Dictionary:
+	match cat_name:
+		"Birdie":
+			return { "fur": Color("d96a1c"), "dark": Color("a34a12"), "belly": Color("f6e2c4"), "eye": Color("8fce3a"), "paw": Color("2a2420"), "stripes": true }
+		"Squeet":
+			return { "fur": Color("9aa3ad"), "dark": Color("5d6670"), "belly": Color("e8eef2"), "eye": Color("7ec8ff"), "paw": Color("d8dee4"), "stripes": false }
+		"Mimi":
+			return { "fur": Color("f2b6c8"), "dark": Color("c56d86"), "belly": Color("fff1f5"), "eye": Color("d36b9a"), "paw": Color("fff6fa"), "stripes": false }
+		"Talle":
+			return { "fur": Color("f4f0e6"), "dark": Color("c9c2b4"), "belly": Color("ffffff"), "eye": Color("6bc4c0"), "paw": Color("e8e2d6"), "stripes": false }
+		"Tire":
+			return { "fur": Color("2b2b2f"), "dark": Color("111114"), "belly": Color("5a5a62"), "eye": Color("f0c430"), "paw": Color("1a1a1c"), "stripes": false }
+		"Horn":
+			return { "fur": Color("6b3f24"), "dark": Color("3d2214"), "belly": Color("d2b48c"), "eye": Color("c9e86a"), "paw": Color("2a1a10"), "stripes": true }
+		"Mable":
+			return { "fur": Color("8a4a2a"), "dark": Color("3a2418"), "belly": Color("f0d2a8"), "eye": Color("e07a3a"), "paw": Color("241610"), "stripes": true }
+		_:
+			return { "fur": Color("f3d56a"), "dark": Color("c9a43c"), "belly": Color("fff6d2"), "eye": Color("e8b84a"), "paw": Color("5a4630"), "stripes": false }
 
 
 func _build_body() -> void:
@@ -634,10 +706,13 @@ func _build_body() -> void:
 
 
 func _build_cat(s: float) -> void:
-	var fur := Color("d96a1c") if is_birdie else Color("f3d56a")
-	var fur_dark := Color("a34a12") if is_birdie else Color("c9a43c")
-	var belly := Color("f6e2c4") if is_birdie else Color("fff6d2")
-	var eye := Color("8fce3a") if is_birdie else Color("e8b84a")
+	var pal: Dictionary = _cat_palette()
+	var fur: Color = pal.fur
+	var fur_dark: Color = pal.dark
+	var belly: Color = pal.belly
+	var eye: Color = pal.eye
+	var paw: Color = pal.paw
+	var stripes: bool = pal.stripes
 	MeshUtil.add_box(body_root, Vector3(0.46, 0.38, 0.72) * s, fur, Vector3(0.0, 0.42 * s, 0.04))
 	MeshUtil.add_box(body_root, Vector3(0.34, 0.2, 0.5) * s, belly, Vector3(0.0, 0.28 * s, 0.02))
 	MeshUtil.add_sphere(body_root, 0.2 * s, fur, Vector3(0.0, 0.44 * s, 0.28 * s))
@@ -657,11 +732,10 @@ func _build_cat(s: float) -> void:
 	MeshUtil.add_sphere(body_root, 0.028 * s, eye, Vector3(0.09 * s, 0.68 * s, -0.64 * s))
 	MeshUtil.add_sphere(body_root, 0.016 * s, Color.BLACK, Vector3(-0.09 * s, 0.68 * s, -0.66 * s))
 	MeshUtil.add_sphere(body_root, 0.016 * s, Color.BLACK, Vector3(0.09 * s, 0.68 * s, -0.66 * s))
-	if is_birdie:
+	if stripes:
 		MeshUtil.add_box(body_root, Vector3(0.48, 0.06, 0.08) * s, fur_dark, Vector3(0.0, 0.52 * s, -0.08))
 		MeshUtil.add_box(body_root, Vector3(0.48, 0.06, 0.08) * s, fur_dark, Vector3(0.0, 0.52 * s, 0.12))
 		MeshUtil.add_box(body_root, Vector3(0.1, 0.08, 0.2) * s, fur_dark, Vector3(0.0, 0.74 * s, -0.4 * s))
-	var paw := Color("2a2420") if is_birdie else Color("5a4630")
 	for pos in [Vector3(-0.16, 0.18, -0.22), Vector3(0.16, 0.18, -0.22), Vector3(-0.16, 0.18, 0.26), Vector3(0.16, 0.18, 0.26)]:
 		MeshUtil.add_capsule(body_root, 0.055 * s, 0.32 * s, fur, pos * s)
 		MeshUtil.add_sphere(body_root, 0.06 * s, paw, Vector3(pos.x * s, 0.05 * s, pos.z * s))

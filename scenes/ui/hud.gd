@@ -19,6 +19,9 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	visible = not GameState.cinematic
+	if GameState.cinematic:
+		return
 	var player := _local_player()
 	if player:
 		_prompt.text = player.interact_prompt
@@ -28,6 +31,7 @@ func _process(_delta: float) -> void:
 		_banner_time = maxf(_banner_time - _delta, 0.0)
 		if _banner_time <= 0.0:
 			_banner.text = ""
+	_refresh_controls_hint()
 	_ash.color.a = 0.0
 	if GameState.match_running and GameState.time_left <= 60.0:
 		_ash.color.a = 0.12 + sin(Time.get_ticks_msec() * 0.006) * 0.05
@@ -93,14 +97,25 @@ func _build() -> void:
 	add_child(_arrest)
 
 	var hint := Label.new()
+	hint.name = "ControlsHint"
 	hint.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	hint.offset_left = 20
 	hint.offset_top = -40
-	hint.offset_right = 640
+	hint.offset_right = 920
 	hint.offset_bottom = -12
-	hint.text = "W/S walk  •  A/D turn  •  ←/→ strafe  •  mouse aim  •  Space shoot  •  E interact"
 	hint.add_theme_color_override("font_color", Color(1, 1, 1, 0.55))
 	add_child(hint)
+	_refresh_controls_hint()
+
+
+func _refresh_controls_hint() -> void:
+	var hint := get_node_or_null("ControlsHint") as Label
+	if hint == null:
+		return
+	if InputBinder.using_gamepad():
+		hint.text = "LS move  •  RS turn  •  A grab  •  RT / X / RB shoot  •  Start pause mouse"
+	else:
+		hint.text = "W/S walk  •  A/D strafe  •  ←/→ turn  •  Space shoot  •  E interact"
 
 
 func _on_time(seconds_left: float) -> void:

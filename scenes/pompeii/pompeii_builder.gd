@@ -32,6 +32,7 @@ static func build(root: Node3D) -> void:
 
 static func _environment(root: Node3D) -> void:
 	var world := WorldEnvironment.new()
+	world.name = "WorldEnvironment"
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color("c9844a")
@@ -144,10 +145,13 @@ static func _volcano_cave(root: Node3D, map: Node3D) -> void:
 	mouth.font_size = 22
 	mouth.modulate = Color("ff8866")
 	map.add_child(mouth)
+	var lemon_i := 1
 	for pos in [Vector3(0, 0, 66), Vector3(3.4, 0, 70), Vector3(-3.2, 0, 70), Vector3(1.6, 0, 73.5), Vector3(-2.2, 0, 64.5)]:
 		var lemon: Node3D = LEMON.instantiate()
+		lemon.name = "EvilLemon%02d" % lemon_i
 		lemon.position = pos
 		root.add_child(lemon)
+		lemon_i += 1
 
 
 static func _prison(root: Node3D, map: Node3D) -> void:
@@ -205,13 +209,16 @@ static func _people(root: Node3D) -> void:
 		[Vector3(0, 0, 12), CivilianType.Job.ARGUE, CivilianType.Mood.FLEE],
 	]
 	var spawned: Array = []
+	var civ_i := 1
 	for entry in civs:
 		var civ = CIV.instantiate()
+		civ.name = "Civilian%02d" % civ_i
 		civ.position = entry[0]
 		civ.job = entry[1]
 		civ.mood = entry[2]
 		root.add_child(civ)
 		spawned.append(civ)
+		civ_i += 1
 	if spawned.size() >= 5:
 		spawned[3].argue_partner = spawned[4]
 		spawned[4].argue_partner = spawned[3]
@@ -222,18 +229,24 @@ static func _people(root: Node3D) -> void:
 		[Vector3(16, 0, -4), PackedVector3Array([Vector3(16, 0, -4), Vector3(16, 0, 12), Vector3(6, 0, 12)])],
 		[Vector3(-30, 0, 30), PackedVector3Array([Vector3(-30, 0, 30), Vector3(-40, 0, 30), Vector3(-40, 0, 22)])],
 	]
+	var guard_i := 1
 	for entry in patrols:
 		var guard = GUARD.instantiate()
+		guard.name = "Guard%02d" % guard_i
 		guard.position = entry[0]
 		guard.patrol_points = entry[1]
 		root.add_child(guard)
+		guard_i += 1
 
 
 static func _barrows(root: Node3D) -> void:
+	var barrow_i := 1
 	for pos in [Vector3(5, 0, 3), Vector3(-10, 0, -6), Vector3(8, 0, -20), Vector3(-18, 0, 8)]:
 		var barrow: Node3D = BARROW.instantiate()
+		barrow.name = "Wheelbarrow%02d" % barrow_i
 		barrow.position = pos
 		root.add_child(barrow)
+		barrow_i += 1
 
 
 static func _coins(root: Node3D) -> void:

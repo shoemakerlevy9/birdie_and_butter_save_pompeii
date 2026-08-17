@@ -2,6 +2,7 @@ extends Control
 
 
 func _ready() -> void:
+	GameState.cinematic = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_build()
 

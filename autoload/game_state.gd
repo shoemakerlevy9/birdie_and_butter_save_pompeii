@@ -23,6 +23,7 @@ var scores: Dictionary = {}
 var player_names: Dictionary = {}
 var final_scores: Array = []
 var match_running := false
+var cinematic := false
 var _tick_accum := 0.0
 
 
@@ -52,6 +53,7 @@ func _process(delta: float) -> void:
 
 func go_to_menu() -> void:
 	match_running = false
+	cinematic = false
 	get_tree().call_deferred("change_scene_to_file", SCENE_MENU)
 
 
@@ -153,4 +155,9 @@ func end_match() -> void:
 func _show_end(packed: Array) -> void:
 	match_running = false
 	final_scores = packed
+	var pompeii := get_tree().current_scene
+	if pompeii and pompeii.has_method("play_eruption_then_end"):
+		pompeii.play_eruption_then_end()
+		return
+	cinematic = false
 	get_tree().call_deferred("change_scene_to_file", SCENE_END)

@@ -3,11 +3,14 @@ extends Node
 const MAX_PLAYERS := 8
 const LAN_PORT := 7777
 const STEAM_APP_ID := 480
+const CAT_HOST := "Birdie"
+const CAT_JOINERS := ["Squeet", "Mimi", "Talle", "Tire", "Horn", "Mable"]
 
 enum Transport { NONE, LAN, STEAM }
 
 signal steam_status_changed
 signal connection_failed(reason: String)
+signal roster_changed
 
 var transport: Transport = Transport.NONE
 var steam_available := false
@@ -17,6 +20,8 @@ var last_error := ""
 var _steam: Object = null
 var _hosting_steam := false
 var _ignore_peer_signals := false
+var join_order: Array[int] = []
+var peer_cat_names: Dictionary = {}
 
 
 func _ready() -> void:
@@ -24,6 +29,8 @@ func _ready() -> void:
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
 	multiplayer.connection_failed.connect(_on_connection_failed)
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
+	multiplayer.peer_connected.connect(_on_peer_connected)
+	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 
 
 func _process(_delta: float) -> void:
@@ -44,7 +51,103 @@ func local_display_name() -> String:
 		var persona: String = str(_steam.getPersonaName())
 		if not persona.is_empty():
 			return persona
-	return "Birdie" if is_host() else "Butter"
+	return cat_name_for_peer(multiplayer.get_unique_id())
+
+
+func cat_name_for_peer(peer_id: int) -> String:
+	if peer_cat_names.has(peer_id):
+		return str(peer_cat_names[peer_id])
+	if peer_id == host_peer_id or (join_order.is_empty() and is_host_peer(peer_id)):
+		return CAT_HOST
+	var idx := join_order.find(peer_id)
+	if idx <= 0:
+		return CAT_HOST if peer_id == host_peer_id else CAT_JOINERS[0]
+	var joiner := idx - 1
+	if joiner < CAT_JOINERS.size():
+		return CAT_JOINERS[joiner]
+	return "Butter"
+
+
+func _used_cat_names() -> Array:
+	var used: Array = []
+	for cat in peer_cat_names.values():
+		used.append(str(cat))
+	return used
+
+
+func _assign_cat(peer_id: int) -> void:
+	if peer_cat_names.has(peer_id):
+		return
+	if peer_id == host_peer_id:
+		peer_cat_names[peer_id] = CAT_HOST
+		return
+	var used := _used_cat_names()
+	for cat in CAT_JOINERS:
+		if not used.has(cat):
+			peer_cat_names[peer_id] = cat
+			return
+	peer_cat_names[peer_id] = "Butter"
+
+
+func _register_peer(peer_id: int) -> void:
+	if not join_order.has(peer_id):
+		join_order.append(peer_id)
+	_assign_cat(peer_id)
+	_broadcast_roster()
+
+
+func _forget_peer(peer_id: int) -> void:
+	if not join_order.has(peer_id) and not peer_cat_names.has(peer_id):
+		return
+	join_order.erase(peer_id)
+	peer_cat_names.erase(peer_id)
+	_broadcast_roster()
+
+
+func _seed_host_roster() -> void:
+	host_peer_id = multiplayer.get_unique_id()
+	join_order = [host_peer_id]
+	peer_cat_names = {host_peer_id: CAT_HOST}
+	roster_changed.emit()
+
+
+func _broadcast_roster() -> void:
+	if multiplayer.is_server():
+		rpc("_sync_roster", host_peer_id, join_order, peer_cat_names)
+	roster_changed.emit()
+
+
+@rpc("any_peer", "reliable")
+func _request_roster() -> void:
+	if not multiplayer.is_server():
+		return
+	var who := multiplayer.get_remote_sender_id()
+	if who <= 0:
+		return
+	rpc_id(who, "_sync_roster", host_peer_id, join_order, peer_cat_names)
+
+
+@rpc("authority", "call_local", "reliable")
+func _sync_roster(host_id: int, order: Array, names: Dictionary) -> void:
+	host_peer_id = int(host_id)
+	join_order.clear()
+	for peer_id in order:
+		join_order.append(int(peer_id))
+	peer_cat_names.clear()
+	for key in names.keys():
+		peer_cat_names[int(key)] = str(names[key])
+	roster_changed.emit()
+
+
+func _on_peer_connected(peer_id: int) -> void:
+	if multiplayer.is_server():
+		_register_peer(host_peer_id)
+		_register_peer(peer_id)
+
+
+func _on_peer_disconnected(peer_id: int) -> void:
+	if multiplayer.is_server():
+		_forget_peer(peer_id)
 
 
 func host_lan() -> Error:
@@ -57,7 +160,7 @@ func host_lan() -> Error:
 		return err
 	_set_peer(peer)
 	transport = Transport.LAN
-	host_peer_id = multiplayer.get_unique_id()
+	_seed_host_roster()
 	GameState.go_to_lobby()
 	return OK
 
@@ -152,8 +255,11 @@ func shutdown() -> void:
 		_steam.leaveLobby(lobby_id)
 	lobby_id = 0
 	_hosting_steam = false
+	join_order.clear()
+	peer_cat_names.clear()
 	_reset_peer()
 	transport = Transport.NONE
+	roster_changed.emit()
 
 
 func _set_peer(peer: MultiplayerPeer) -> void:
@@ -261,7 +367,7 @@ func _setup_steam_host_peer() -> bool:
 		peer.server_relay = true
 	_set_peer(peer)
 	transport = Transport.STEAM
-	host_peer_id = multiplayer.get_unique_id()
+	_seed_host_roster()
 	return true
 
 
@@ -288,6 +394,8 @@ func _setup_steam_client_peer(this_lobby: int, owner_id: int) -> bool:
 
 
 func _on_connected_to_server() -> void:
+	if not multiplayer.is_server():
+		rpc_id(1, "_request_roster")
 	if transport == Transport.LAN:
 		GameState.go_to_lobby()
 

@@ -15,7 +15,7 @@ config/description="A silly co-op adventure: two cats travel back in time and dr
 config/version="0.2.0"
 run/main_scene="res://scenes/boot/splash.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
-config/icon="res://assets/branding/ppls_studios_logo.jpg"
+config/icon="res://assets/branding/ppls_studios_logo.png"
 
 [autoload]
 
