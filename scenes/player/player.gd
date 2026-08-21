@@ -6,6 +6,8 @@ const MeshUtil := preload("res://scripts/mesh_util.gd")
 const TURN_SPEED := 2.6
 const CAMERA_PITCH := -0.38
 const ARREST_RESET_RATE := 0.6
+const PORTAL_HOLD_TIME := 1.25
+const PORTAL_NEAR_GRACE := 0.25
 
 @export var is_birdie := false
 @export var cat_name := "Birdie"
@@ -20,6 +22,7 @@ var interact_prompt := ""
 var _fire_cd := 0.0
 var _shake := 0.0
 var _portal_hold := 0.0
+var _portal_near_grace := 0.0
 var _knock := Vector3.ZERO
 
 @onready var spring_arm: SpringArm3D = $SpringArm3D
@@ -110,9 +113,11 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_just_pressed("fire"):
 		_fire()
 	if Input.is_action_just_pressed("interact"):
-		_interact_pressed()
-	_refresh_prompt()
+		if not (_can_use_portal() and _near_portal()):
+			_interact_pressed()
 	_try_enter_portal(delta)
+	if _portal_hold <= 0.0:
+		_refresh_prompt()
 
 
 func add_arrest(delta: float) -> void:
@@ -594,17 +599,41 @@ func _refresh_prompt() -> void:
 
 
 func _try_enter_portal(delta: float) -> void:
-	if not _can_use_portal() or not _near_portal():
+	if not _can_use_portal():
+		_portal_hold = 0.0
+		_portal_near_grace = 0.0
+		return
+	if _near_portal():
+		_portal_near_grace = PORTAL_NEAR_GRACE
+	else:
+		_portal_near_grace = maxf(_portal_near_grace - delta, 0.0)
+	if _portal_near_grace <= 0.0:
 		_portal_hold = 0.0
 		return
 	if Input.is_action_pressed("interact"):
-		_portal_hold += delta
-		interact_prompt = "Opening portal... %d%%" % int((_portal_hold / 0.35) * 100.0)
-		if _portal_hold >= 0.35:
+		_portal_hold = minf(_portal_hold + delta, PORTAL_HOLD_TIME)
+		var pct := clampi(int(round((_portal_hold / PORTAL_HOLD_TIME) * 100.0)), 0, 100)
+		interact_prompt = "Opening portal... %d%%" % pct
+		if _portal_hold >= PORTAL_HOLD_TIME:
+			interact_prompt = "Opening portal... 100%"
 			_portal_hold = 0.0
-			GameState.start_match()
+			_portal_near_grace = 0.0
+			if multiplayer.is_server():
+				GameState.start_match()
+			else:
+				rpc_id(1, "host_request_start_match")
 	else:
 		_portal_hold = 0.0
+
+
+@rpc("any_peer", "reliable")
+func host_request_start_match() -> void:
+	if not multiplayer.is_server():
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	if sender != 0 and sender != NetworkManager.host_peer_id:
+		return
+	GameState.start_match()
 
 
 func _can_use_portal() -> bool:
@@ -668,6 +697,8 @@ func _cat_palette() -> Dictionary:
 	match cat_name:
 		"Birdie":
 			return { "fur": Color("d96a1c"), "dark": Color("a34a12"), "belly": Color("f6e2c4"), "eye": Color("8fce3a"), "paw": Color("2a2420"), "stripes": true }
+		"Butter":
+			return { "fur": Color("f3d56a"), "dark": Color("c9a43c"), "belly": Color("fff6d2"), "eye": Color("e8b84a"), "paw": Color("5a4630"), "stripes": false }
 		"Squeet":
 			return { "fur": Color("9aa3ad"), "dark": Color("5d6670"), "belly": Color("e8eef2"), "eye": Color("7ec8ff"), "paw": Color("d8dee4"), "stripes": false }
 		"Mimi":
